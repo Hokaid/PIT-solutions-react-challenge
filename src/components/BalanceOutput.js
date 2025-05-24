@@ -78,7 +78,61 @@ BalanceOutput.propTypes = {
 export default connect(state => {
   let balance = [];
 
-  /* YOUR CODE GOES HERE */
+  const { startAccount, endAccount, startPeriod, endPeriod } = state.userInput;
+
+  // Fallbacks for wildcard (*) values
+  const accMin = isNaN(startAccount) ? 0 : startAccount;
+  const accMax = isNaN(endAccount) ? Infinity : endAccount;
+
+  const dateMin =
+    startPeriod instanceof Date && !isNaN(startPeriod)
+      ? startPeriod
+      : new Date(-8640000000000000);
+  const dateMax =
+    endPeriod instanceof Date && !isNaN(endPeriod)
+      ? endPeriod
+      : new Date(8640000000000000);
+
+  // Range filters for accounts and periods
+  const isAccountInRange = acc => acc >= accMin && acc <= accMax;
+  const isDateInRange = date => date >= dateMin && date <= dateMax;
+
+  // Create a lookup map for valid accounts and their labels
+  const accountMap = new Map(
+    state.accounts.map(({ ACCOUNT, LABEL }) => [ACCOUNT, LABEL])
+  );
+
+  // Filter journal entries that match both account and period range
+  // and ensure the account exists in the account list
+  const filteredEntries = state.journalEntries.filter(
+    ({ ACCOUNT, PERIOD }) =>
+      isAccountInRange(ACCOUNT) &&
+      isDateInRange(PERIOD) &&
+      accountMap.has(ACCOUNT)
+  );
+
+  // Aggregate debits and credits by account
+  const aggregated = new Map();
+  for (const { ACCOUNT, DEBIT, CREDIT } of filteredEntries) {
+    if (!aggregated.has(ACCOUNT)) {
+      aggregated.set(ACCOUNT, { DEBIT: 0, CREDIT: 0 });
+    }
+    const current = aggregated.get(ACCOUNT);
+    current.DEBIT += DEBIT;
+    current.CREDIT += CREDIT;
+  }
+
+  // Format result with DESCRIPTION and BALANCE,
+  // sorted by account number
+  balance = Array.from(aggregated.entries())
+    .map(([ACCOUNT, { DEBIT, CREDIT }]) => ({
+      ACCOUNT,
+      DESCRIPTION: accountMap.get(ACCOUNT),
+      DEBIT,
+      CREDIT,
+      BALANCE: DEBIT - CREDIT
+    }))
+    .sort((a, b) => a.ACCOUNT - b.ACCOUNT);
 
   const totalCredit = balance.reduce((acc, entry) => acc + entry.CREDIT, 0);
   const totalDebit = balance.reduce((acc, entry) => acc + entry.DEBIT, 0);
